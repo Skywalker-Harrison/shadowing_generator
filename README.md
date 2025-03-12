@@ -20,6 +20,9 @@ Shadow reading is a language learning technique where you repeat what you hear i
 - **Smart Sentence Detection**: Parses SRT subtitle files and intelligently splits content by complete sentences
 - **Customizable Repetitions**: Set how many times each sentence repeats
 - **Flexible Subtitle Display**: Choose which repetition shows subtitles (all, first, second, etc.)
+- **Automatic Line Breaks**: Subtitles are automatically formatted with line breaks for better readability
+- **Enhanced Subtitle Visibility**: Semi-transparent background and optimized font size ensure subtitles are visible against any video background
+- **Screen-Safe Subtitles**: Intelligent positioning prevents subtitles from overflowing the screen
 - **Batch Processing**: Apply settings to all sentences or specific ranges
 - **Dual Interface**: Use either the graphical interface or command line
 - **Progress Tracking**: Visual progress bar during video generation
@@ -44,7 +47,12 @@ Shadow reading is a language learning technique where you repeat what you hear i
 
 2. Install the required dependencies:
    ```bash
-   pip install pysrt moviepy nltk
+   pip install -r requirements.txt
+   ```
+
+   Now you need to install imagemagick for the video generation to work.
+   ```bash
+   brew install imagemagick
    ```
 
 ## Quick Start
@@ -113,6 +121,7 @@ The interface allows you to:
 3. Specify where to save the output video
 4. Edit sentence repetition settings:
    - Set which repetition displays subtitles (0=All, 1=First, 2=Second, etc.)
+   - Set maximum characters per line for subtitles (for better readability)
    - Apply settings to all sentences at once
    - Apply settings to specific sentence ranges
    - Set individual repetition counts for each sentence
@@ -121,7 +130,7 @@ The interface allows you to:
 #### Using the Command Line
 
 ```bash
-python generate_video.py --video your_video.mp4 --json sentences.json --output shadow_reading.mp4 --subtitle-display 2
+python generate_video.py --video your_video.mp4 --json sentences.json --output shadow_reading.mp4 --subtitle-display 2 --max-chars-per-line 40
 ```
 
 Parameters:
@@ -130,6 +139,7 @@ Parameters:
 - `--output`: Path for the output video file (default: output.mp4)
 - `--edit`: Open the editing interface to set repetition counts
 - `--subtitle-display`: Which repetition shows subtitles (default: 2)
+- `--max-chars-per-line`: Maximum characters per line for subtitles (default: 40)
 
 Example workflow:
 ```bash

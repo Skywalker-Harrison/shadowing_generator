@@ -4,7 +4,7 @@
 import os
 import json
 import argparse
-from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, CompositeVideoClip, ColorClip
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
@@ -39,6 +39,13 @@ class SentenceEditor:
         subtitle_spinner = ttk.Spinbox(batch_frame, from_=0, to=10, textvariable=self.subtitle_display_var, width=5)
         subtitle_spinner.grid(row=0, column=4, padx=5, pady=5)
         ttk.Label(batch_frame, text="(0=All repeats, 1=First repeat, 2=Second repeat, ...)").grid(row=0, column=5, padx=5, pady=5)
+        
+        # Max characters per line for subtitles
+        ttk.Label(batch_frame, text="Max characters per line:").grid(row=2, column=0, padx=5, pady=5)
+        self.max_chars_var = tk.IntVar(value=40)  # Default to 40 characters per line
+        max_chars_spinner = ttk.Spinbox(batch_frame, from_=20, to=80, textvariable=self.max_chars_var, width=5)
+        max_chars_spinner.grid(row=2, column=1, padx=5, pady=5)
+        ttk.Button(batch_frame, text="Apply", command=self.apply_batch).grid(row=2, column=2, padx=5, pady=5)
         
         # Create range settings
         ttk.Label(batch_frame, text="From sentence").grid(row=1, column=0, padx=5, pady=5)
@@ -154,11 +161,93 @@ class SentenceEditor:
         
         # Save subtitle display settings
         subtitle_display = self.subtitle_display_var.get()
+        max_chars_per_line = self.max_chars_var.get()
         for sentence in self.sentences:
             sentence['subtitle_display'] = subtitle_display
+            sentence['max_chars_per_line'] = max_chars_per_line
         
         self.on_save(self.sentences)
         self.root.destroy()
+
+def format_subtitle_text(text, max_chars_per_line=40):
+    """
+    Format subtitle text with appropriate line breaks for better readability
+    
+    Args:
+        text: Original subtitle text
+        max_chars_per_line: Maximum characters per line
+        
+    Returns:
+        str: Formatted subtitle text with line breaks
+    """
+    # If text already contains line breaks, we'll respect them but also
+    # ensure each line doesn't exceed max_chars_per_line
+    if '\n' in text:
+        lines = text.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            # If this line is too long, format it
+            if len(line) > max_chars_per_line:
+                formatted_lines.extend(format_line(line, max_chars_per_line))
+            else:
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
+    
+    # If text is short enough, return as is
+    if len(text) <= max_chars_per_line:
+        return text
+    
+    # Otherwise, format the text
+    return '\n'.join(format_line(text, max_chars_per_line))
+
+def format_line(text, max_chars_per_line):
+    """
+    Format a single line of text into multiple lines
+    
+    Args:
+        text: Text to format
+        max_chars_per_line: Maximum characters per line
+        
+    Returns:
+        list: List of formatted lines
+    """
+    words = text.split()
+    lines = []
+    current_line = []
+    current_length = 0
+    
+    for word in words:
+        # Check if adding this word would exceed the max line length
+        word_length = len(word)
+        space_length = 1 if current_length > 0 else 0
+        
+        if current_length + word_length + space_length > max_chars_per_line:
+            # If this single word is longer than max_chars_per_line
+            if not current_line and word_length > max_chars_per_line:
+                # Split the long word
+                remaining_word = word
+                while len(remaining_word) > 0:
+                    chunk = remaining_word[:max_chars_per_line]
+                    remaining_word = remaining_word[max_chars_per_line:]
+                    lines.append(chunk)
+            else:
+                # Add the current line to lines and start a new line
+                lines.append(' '.join(current_line))
+                current_line = [word]
+                current_length = word_length
+        else:
+            # Add word to current line
+            current_line.append(word)
+            # Add word length plus space
+            current_length += word_length + space_length
+    
+    # Add the last line
+    if current_line:
+        lines.append(' '.join(current_line))
+    
+    return lines
 
 def generate_video(video_path, sentences, output_path, progress_callback=None):
     """
@@ -184,6 +273,7 @@ def generate_video(video_path, sentences, output_path, progress_callback=None):
         end_time = sentence['end']
         repeat_count = sentence.get('repeat_count', 1)
         subtitle_display = sentence.get('subtitle_display', 2)  # Default to show subtitles on the second repeat
+        max_chars_per_line = sentence.get('max_chars_per_line', 40)  # Default to 40 characters per line
         
         # Update progress
         if progress_callback:
@@ -207,26 +297,70 @@ def generate_video(video_path, sentences, output_path, progress_callback=None):
         
         # Create clip with subtitles
         try:
-            # Create simple text subtitle
-            fontsize = int(sentence_clip.h * 0.05)  # Font size is 5% of video height
+            # Calculate appropriate font size based on video dimensions
+            # Smaller videos need smaller font size to prevent overflow
+            video_width = sentence_clip.w
+            video_height = sentence_clip.h
+            
+            # Adjust font size based on video width
+            # For wider videos, we can use larger font
+            if video_width >= 1920:  # Full HD or higher
+                fontsize = int(video_height * 0.045)
+            elif video_width >= 1280:  # HD
+                fontsize = int(video_height * 0.04)
+            else:  # SD or smaller
+                fontsize = int(video_height * 0.035)
+            
+            # Adjust max chars per line based on video width
+            # This ensures text doesn't overflow horizontally
+            adjusted_max_chars = min(max_chars_per_line, int(video_width / 12))
+            
+            # Format text with line breaks for better readability
+            text = format_subtitle_text(sentence['text'], max_chars_per_line=adjusted_max_chars)
+            
+            # Create text clip with proper styling
             txt_clip = TextClip(
-                sentence['text'], 
+                text, 
                 fontsize=fontsize,
                 color='white',
                 font='Arial',
-                stroke_color='black',
-                stroke_width=1,
-                method='label'
+                stroke_color='white',
+                stroke_width=1,  # Increased stroke width for better visibility
+                method='label',
+                align='center'  # Center-align the text
             ).set_duration(sentence_clip.duration)
             
-            # Calculate subtitle position (centered at bottom)
+            # Calculate subtitle position (centered at bottom with safe margin)
             txt_width, txt_height = txt_clip.size
-            position = ('center', sentence_clip.h - txt_height - 20)  # 20 pixels above bottom
             
-            # Composite video and subtitle
+            # Ensure subtitle doesn't go off-screen
+            # Keep a safe margin from the bottom (8% of video height)
+            bottom_margin = int(video_height * 0.08)
+            position = ('center', video_height - txt_height - bottom_margin)
+            
+            # Create a semi-transparent background for better readability
+            # Add some padding around the text
+            padding_x = int(fontsize * 0.7)  # Horizontal padding
+            padding_y = int(fontsize * 0.4)  # Vertical padding
+            
+            bg_width = txt_width + (padding_x * 2)
+            bg_height = txt_height + (padding_y * 2)
+            
+            # Create a black background with 50% opacity
+            bg_clip = ColorClip(
+                size=(int(bg_width), int(bg_height)),
+                color=(0, 0, 0)
+            ).set_opacity(0.5).set_duration(sentence_clip.duration)
+            
+            # Position the background and text
+            bg_position = ('center', video_height - bg_height - bottom_margin + padding_y)
+            txt_position = ('center', video_height - txt_height - bottom_margin)
+            
+            # Composite video, background, and subtitle
             video_with_text = CompositeVideoClip([
-                sentence_clip, 
-                txt_clip.set_position(position)
+                sentence_clip,
+                bg_clip.set_position(bg_position),
+                txt_clip.set_position(txt_position)
             ])
         except Exception as e:
             print(f"Error adding subtitles: {str(e)}, using clip without subtitles")
@@ -472,6 +606,8 @@ def main_cli():
     parser.add_argument('--edit', action='store_true', help='Edit sentence repeat counts')
     parser.add_argument('--subtitle-display', type=int, default=2, 
                         help='Show subtitles on which repeat (0=All repeats, 1=First repeat, 2=Second repeat, ...)')
+    parser.add_argument('--max-chars-per-line', type=int, default=40,
+                        help='Maximum characters per line for subtitles (default: 40)')
     
     args = parser.parse_args()
     
@@ -498,6 +634,7 @@ def main_cli():
             # If not editing, apply subtitle display setting from command line
             for sentence in sentences:
                 sentence['subtitle_display'] = args.subtitle_display
+                sentence['max_chars_per_line'] = args.max_chars_per_line
             
             # Save updated settings
             save_sentences(sentences, args.json)
