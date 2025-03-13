@@ -169,6 +169,10 @@ python generate_video.py --video your_video.mp4 --json sentences.json --output s
    - Advanced: 1-2 repetitions with minimal subtitle use
 4. **Practice regularly**: 15-30 minutes daily is more effective than occasional longer sessions
 
+## An example of a adding subtitles to a video
+
+![Adding subtitles to a video](./example.png)
+
 ## Troubleshooting
 
 ### Common Issues
